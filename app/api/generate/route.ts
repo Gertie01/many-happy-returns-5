@@ -10,33 +10,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid prompt' }, { status: 400 });
     }
 
-    // Force model ID to be correct (Guardrail: removes accidental paywall triggers)
     const activeModel = "rudalle-Malevich";
     if (modelId !== activeModel) {
       return NextResponse.json({ error: 'Unsupported model version' }, { status: 400 });
     }
 
-    // Abuse Protection: Quick check (e.g., length check)
     if (prompt.length > 2000) {
       return NextResponse.json({ error: 'Prompt too long' }, { status: 400 });
     }
 
-    // Simulated generation logic for the 'internal API'
-    // In a production environment, this would call the Python/Torch service.
-    // Since it is free/no-limits, we simulate the high-speed response.
-    
-    // Mock delay
-    await new Promise((r) => setTimeout(r, 1500));
+    // Call the internal Python/Torch API
+    const internalApiUrl = process.env.INTERNAL_API_URL;
+    const internalApiKey = process.env.INTERNAL_API_KEY;
 
-    // Using a deterministic seeded image for demo, or a generic high-quality abstract response
-    // This represents the successful internal call to the rudalle engine.
-    const mockImageUrl = `https://picsum.photos/seed/${encodeURIComponent(prompt.slice(0, 10))}/1024/1024`;
+    if (!internalApiUrl || !internalApiKey) {
+      return NextResponse.json({ 
+        error: 'Internal API configuration missing' 
+      }, { status: 500 });
+    }
+
+    const response = await fetch(`${internalApiUrl}/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${internalApiKey}`,
+      },
+      body: JSON.stringify({
+        prompt,
+        model: activeModel,
+      }),
+    });
+
+    if (!response.ok) {
+      return NextResponse.json({
+        error: 'Failed to generate image'
+      }, { status: response.status });
+    }
+
+    const generatedData = await response.json();
 
     return NextResponse.json({
       success: true,
       model: activeModel,
       timestamp: new Date().toISOString(),
-      images: [{ url: mockImageUrl }],
+      images: generatedData.images,
       status: 'unlimited'
     }, {
       headers: {
@@ -45,9 +62,9 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: any) {
-    return NextResponse.json({ 
-      error: 'Internal Generation Error', 
-      details: error.message 
+    return NextResponse.json({
+      error: 'Internal Generation Error',
+      details: error.message
     }, { status: 500 });
   }
 }
